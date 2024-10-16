@@ -83,18 +83,21 @@ class SimpleApp(QWidget):
             print(f"Selected output folder: {self.output_folder}")
 
     def execute_analysis(self):
-        # Perform the protein group counting based on selected samples
         try:
             selected_samples = [checkbox.text() for checkbox in self.checkboxes if checkbox.isChecked()]
             if not selected_samples:
                 QMessageBox.warning(self, "No Samples Selected", "Please select at least one sample column.")
                 return
 
-            # Dictionary to store unique protein groups for each sample
+            # Dictionary to store unique protein groups for each sample and overlap analysis
             results = {}
+            exclusive_counts = {}
+
+            # To keep track of which proteins are detected in how many samples
+            protein_detection_counts = pd.DataFrame(0, index=self.df['Protein.Group'], columns=selected_samples)
 
             for sample in selected_samples:
-                # Get unique protein groups where the sample column has a non-null value
+                # Get rows where the sample column has non-null values
                 sample_data = self.df[sample].notna()
                 unique_proteins = set()
 
@@ -103,26 +106,63 @@ class SimpleApp(QWidget):
                     uniprot_ids = protein_group.split(';')
                     unique_proteins.update(uniprot_ids)
 
+                # Mark detected proteins for this sample
+                for protein_group in unique_proteins:
+                    protein_detection_counts.loc[protein_group, sample] = 1
+
                 results[sample] = len(unique_proteins)
+
+            # Calculate exclusive proteins for each sample (only detected in this sample)
+            for sample in selected_samples:
+                exclusive_proteins = protein_detection_counts[protein_detection_counts.sum(axis=1) == 1][sample].sum()
+                exclusive_counts[sample] = exclusive_proteins
 
             # Save results to Excel
             output_df = pd.DataFrame({
                 "Sample": results.keys(),
-                "Protein.Groups": results.values()
+                "Protein.Groups": results.values(),
+                "Exclusive.Protein.Groups": exclusive_counts.values()
             })
 
-            output_file_path = f"{self.output_folder}/Detected_protein_groups.xlsx"
+            output_file_path = f"{self.output_folder}/Detected_protein_groups_with_exclusives.xlsx"
             output_df.to_excel(output_file_path, index=False)
             print(f"Results saved to {output_file_path}")
 
             # Sanity check: Randomly show calculations for one peptide row
-            random_index = random.choice(self.df.index)
-            random_row = self.df.iloc[random_index]
-            print("\nSanity Check - Random Peptide Row:")
-            print(random_row[['Protein.Group', *selected_samples]])
+            self.sanity_check(selected_samples, protein_detection_counts)
+
+            # Print output complete and close the application
+            print("Output complete.")
+            self.close()
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"An error occurred during analysis: {e}")
+
+    def sanity_check(self, selected_samples, protein_detection_counts):
+        # Sanity check to ensure counting is correct
+        random_index = random.choice(self.df.index)
+        random_row = self.df.iloc[random_index]
+
+        print("\nSanity Check - Random Peptide Row:")
+        print(random_row[['Protein.Group', *selected_samples]])
+
+        for sample in selected_samples:
+            print(f"\nSanity Check for Sample: {sample}")
+            sample_data = self.df[sample].notna()
+            unique_proteins = set()
+
+            for protein_group in self.df.loc[sample_data, 'Protein.Group']:
+                # Parse UniProt IDs from Protein.Group (split by semicolon if multiple)
+                uniprot_ids = protein_group.split(';')
+                unique_proteins.update(uniprot_ids)
+
+            print(f"Unique Protein Groups for {sample}: {len(unique_proteins)}")
+            print(f"Protein Groups: {unique_proteins}")
+
+        # Check proteins that are exclusive to one sample
+        exclusive_proteins = protein_detection_counts[protein_detection_counts.sum(axis=1) == 1]
+        print("\nSanity Check - Proteins Detected in Only One Sample:")
+        print(exclusive_proteins)
 
 # Main loop
 if __name__ == '__main__':
