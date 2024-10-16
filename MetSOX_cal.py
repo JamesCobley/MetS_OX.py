@@ -99,18 +99,21 @@ class SimpleApp(QWidget):
             for sample in selected_samples:
                 # Get rows where the sample column has non-null values
                 sample_data = self.df[sample].notna()
-                unique_proteins = set()
+                
+                # Use a set to track unique protein groups
+                unique_protein_groups = set()
 
                 for protein_group in self.df.loc[sample_data, 'Protein.Group']:
                     # Parse UniProt IDs from Protein.Group (split by semicolon if multiple)
                     uniprot_ids = protein_group.split(';')
-                    unique_proteins.update(uniprot_ids)
+                    unique_protein_groups.update(uniprot_ids)
 
-                # Mark detected proteins for this sample
-                for protein_group in unique_proteins:
+                # Mark detected proteins for this sample (only unique proteins)
+                for protein_group in unique_protein_groups:
                     protein_detection_counts.loc[protein_group, sample] = 1
 
-                results[sample] = len(unique_proteins)
+                # Only count unique proteins for this sample
+                results[sample] = len(unique_protein_groups)
 
             # Calculate exclusive proteins for each sample (only detected in this sample)
             for sample in selected_samples:
